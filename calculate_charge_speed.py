@@ -8,7 +8,6 @@ VOLTAGE = 230 * sqrt(3)  # Volts
 MIN_CHARGE_SPEED = 1  # Amps
 MAX_CHARGE_SPEED = 16  # Amps
 
-
 @dataclass
 class EnergyPrice:
     from_time: datetime
