@@ -1,10 +1,8 @@
-from dataclasses import dataclass
 from datetime import time, datetime, timedelta, timezone
 from math import sqrt
 import requests
 import json
-import pprint
-from tzlocal import get_localzone # $ pip install tzlocal
+from tzlocal import get_localzone
 
 MAX_CHARGE = 45000  # Wh
 VOLTAGE = 230 * sqrt(3)  # Volts
@@ -14,10 +12,13 @@ POWER_FACTOR = 0.85
 local_tz = get_localzone()
 
 
-@dataclass
 class EnergyPrice:
-    from_time: datetime
-    price: float
+    from_time = datetime.now()
+    price = 0.00
+
+    def __init__(self, from_time: datetime, price: float):
+        self.from_time = from_time
+        self.price = price
 
 
 def get_prices(date: datetime):
@@ -31,13 +32,15 @@ def get_prices(date: datetime):
                  + '", endDate: "' + tomorrow + '") {from marketPrice}}'
     }
 
-    response = requests.post(url, json=data)
+    response = task.executor(requests.post, url, json=data)
+
     return response
 
 
 def get_state_of_charge_percent(vehicle_id: str) -> float:
-    url = 'https://car.eliens.co/get_vehicleinfo/VXKUKZKXZNW066336'
-    response = requests.get(url)
+    url = 'https://car.eliens.co/get_vehicleinfo/' + vehicle_id
+
+    response = task.executor(requests.get, url)
 
     battery_level = json.loads(response.content)['energy'][0]['level']
     print('Current battery charge: {}%'.format(battery_level))
@@ -48,7 +51,7 @@ def percentage_to_wh(percentage: float) -> float:
     return percentage * MAX_CHARGE
 
 
-def main(finish_charge_time, vehicle_id):
+def main(finish_charge_time, vehicle_id, max_charge_level):
     prices_response = get_prices(datetime.now())
     prices_parsed = json.loads(prices_response.content)['data']['marketPricesElectricity']
 
@@ -58,8 +61,7 @@ def main(finish_charge_time, vehicle_id):
     if end_time.time() < start_time.time():
         end_time = end_time + timedelta(days=1)
 
-    prices: [EnergyPrice] = list()
-
+    prices = list()
     start_time_offset = start_time - timedelta(hours=1)
 
     for price in prices_parsed:
@@ -76,7 +78,12 @@ def main(finish_charge_time, vehicle_id):
 
     charge_amounts = dict()
 
-    wh_required = MAX_CHARGE - current_charge
+    session_max_charge = MAX_CHARGE * (max_charge_level / 100)
+    wh_required = session_max_charge - current_charge
+
+    if wh_required < 0:
+        wh_required = 0
+
     ah_required = wh_required / VOLTAGE / POWER_FACTOR
 
     for price in prices:
@@ -95,7 +102,14 @@ def main(finish_charge_time, vehicle_id):
     return charge_amounts[current_hour]
 
 
-if __name__ == '__main__':
-    pp = pprint.PrettyPrinter(indent=4)
-    current_hour_charge_speed = main(finish_charge_time=time.fromisoformat('07:00:00'), vehicle_id='')
-    print('Calculated current charging power to {} A'.format(current_hour_charge_speed))
+@service
+def calculate_charge_speed():
+    """Calculate the optimal car charging speed based on current battery level and desired full time"""
+    vehicle_id = input_text.charge_vehicle_number
+    finish_time = input_text.charge_full_time
+    max_charge_level = float(input_number.max_car_charge)
+    desired_charge_speed = main(finish_charge_time=time.fromisoformat(finish_time),
+                                vehicle_id=vehicle_id,
+                                max_charge_level=max_charge_level)
+    input_number.set_value(entity_id="input_number.charge_speed", value=desired_charge_speed)
+
