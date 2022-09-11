@@ -1,7 +1,8 @@
+import json
 from datetime import time, datetime, timedelta, timezone
 from math import sqrt
+
 import requests
-import json
 from tzlocal import get_localzone
 
 MAX_CHARGE = 45000  # Wh
@@ -25,7 +26,7 @@ def get_prices(date: datetime):
     url = 'https://graphcdn.frankenergie.nl/'
 
     today = date.strftime('%Y-%m-%d')
-    tomorrow = (date+timedelta(days=2)).strftime('%Y-%m-%d')
+    tomorrow = (date + timedelta(days=2)).strftime('%Y-%m-%d')
 
     data = {
         "query": 'query MarketPrices {marketPricesElectricity(startDate: "' + today
@@ -33,6 +34,7 @@ def get_prices(date: datetime):
     }
 
     response = task.executor(requests.post, url, json=data)
+    # response = requests.post(url, json=data)
 
     return response
 
@@ -41,14 +43,17 @@ def get_state_of_charge_percent(vehicle_id: str) -> float:
     url = 'https://car.eliens.co/get_vehicleinfo/' + vehicle_id
 
     response = task.executor(requests.get, url)
+    # response = requests.get(url)
 
     battery_level = json.loads(response.content)['energy'][0]['level']
-    print('Current battery charge: {}%'.format(battery_level))
+    log.info('Current battery charge: {}%'.format(battery_level))
+    # print('Current battery charge: {}%'.format(battery_level))
+
     return battery_level
 
 
 def percentage_to_wh(percentage: float) -> float:
-    return percentage * MAX_CHARGE
+    return percentage / 100 * MAX_CHARGE
 
 
 def main(finish_charge_time, vehicle_id, max_charge_level):
@@ -65,7 +70,7 @@ def main(finish_charge_time, vehicle_id, max_charge_level):
     start_time_offset = start_time - timedelta(hours=1)
 
     for price in prices_parsed:
-        segment_start_time = datetime.strptime(price['from'], '%Y-%m-%dT%H:%M:%S.%fZ')\
+        segment_start_time = datetime.strptime(price['from'], '%Y-%m-%dT%H:%M:%S.%fZ') \
             .replace(tzinfo=timezone.utc).astimezone(local_tz)
 
         if start_time_offset <= segment_start_time < end_time:
@@ -99,7 +104,7 @@ def main(finish_charge_time, vehicle_id, max_charge_level):
             ah_required -= MAX_CHARGE_SPEED
 
     current_hour = datetime.now().hour
-    return charge_amounts[current_hour]
+    return int(charge_amounts[current_hour])
 
 
 @service
@@ -108,8 +113,9 @@ def calculate_charge_speed():
     vehicle_id = input_text.charge_vehicle_number
     finish_time = input_text.charge_full_time
     max_charge_level = float(input_number.max_car_charge)
+
     desired_charge_speed = main(finish_charge_time=time.fromisoformat(finish_time),
                                 vehicle_id=vehicle_id,
                                 max_charge_level=max_charge_level)
-    input_number.set_value(entity_id="input_number.charge_speed", value=desired_charge_speed)
 
+    input_number.set_value(entity_id="input_number.charge_speed", value=desired_charge_speed)
