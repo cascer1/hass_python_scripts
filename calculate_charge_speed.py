@@ -1,6 +1,7 @@
 import json
 from datetime import time, datetime, timedelta, timezone
 from math import sqrt
+# import pprint
 
 import requests
 from tzlocal import get_localzone
@@ -26,7 +27,7 @@ def get_prices(date: datetime):
     url = 'https://graphcdn.frankenergie.nl/'
 
     today = date.strftime('%Y-%m-%d')
-    tomorrow = (date + timedelta(days=2)).strftime('%Y-%m-%d')
+    tomorrow = (date + timedelta(days=1)).strftime('%Y-%m-%d')
 
     data = {
         "query": 'query MarketPrices {marketPricesElectricity(startDate: "' + today
@@ -57,8 +58,16 @@ def percentage_to_wh(percentage: float) -> float:
 
 
 def main(finish_charge_time, vehicle_id, max_charge_level):
-    prices_response = get_prices(datetime.now())
-    prices_parsed = json.loads(prices_response.content)['data']['marketPricesElectricity']
+    # pp = pprint.PrettyPrinter(indent=4)
+    prices_response_today = get_prices(datetime.now())
+    prices_response_tomorrow = get_prices(datetime.now() + timedelta(days=1))
+    prices_parsed_today = json.loads(prices_response_today.content)['data']['marketPricesElectricity']
+    prices_data_tomorrow = json.loads(prices_response_tomorrow.content)['data']
+
+    if prices_data_tomorrow is None:
+        prices_parsed_merged = prices_parsed_today
+    else:
+        prices_parsed_merged = prices_parsed_today + prices_data_tomorrow['marketPricesElectricity']
 
     start_time = datetime.now().astimezone(local_tz)
     end_time = datetime.now().replace(hour=finish_charge_time.hour, minute=finish_charge_time.minute,
@@ -69,7 +78,7 @@ def main(finish_charge_time, vehicle_id, max_charge_level):
     prices = list()
     start_time_offset = start_time - timedelta(hours=1)
 
-    for price in prices_parsed:
+    for price in prices_parsed_merged:
         segment_start_time = datetime.strptime(price['from'], '%Y-%m-%dT%H:%M:%S.%fZ') \
             .replace(tzinfo=timezone.utc).astimezone(local_tz)
 
@@ -104,6 +113,7 @@ def main(finish_charge_time, vehicle_id, max_charge_level):
             ah_required -= MAX_CHARGE_SPEED
 
     current_hour = datetime.now().hour
+    # pp.pprint(charge_amounts)
     return int(charge_amounts[current_hour])
 
 
@@ -111,11 +121,19 @@ def main(finish_charge_time, vehicle_id, max_charge_level):
 def calculate_charge_speed():
     """Calculate the optimal car charging speed based on current battery level and desired full time"""
     vehicle_id = input_text.charge_vehicle_number
-    finish_time = input_text.charge_full_time
+    # vehicle_id = 'VXKUKZKXZNW066336'
+    finish_time = input_text.charge_full_time + ':00'
+    # finish_time = '11:00:00'
     max_charge_level = float(input_number.max_car_charge)
+    # max_charge_level = 90
 
     desired_charge_speed = main(finish_charge_time=time.fromisoformat(finish_time),
                                 vehicle_id=vehicle_id,
                                 max_charge_level=max_charge_level)
 
     input_number.set_value(entity_id="input_number.charge_speed", value=desired_charge_speed)
+    # print('Desired charge speed: ' + str(desired_charge_speed))
+
+
+# if __name__ == '__main__':
+#     calculate_charge_speed()
