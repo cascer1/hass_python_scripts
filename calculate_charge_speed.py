@@ -121,7 +121,7 @@ def main(finish_charge_time, vehicle_id, max_charge_level):
 def calculate_charge_speed():
     """Calculate the optimal car charging speed based on current battery level and desired full time"""
     vehicle_id = input_text.charge_vehicle_number
-    # vehicle_id = 'VXKUKZKXZNW066336'
+    # vehicle_id = ''
     finish_time = input_text.charge_full_time + ':00'
     # finish_time = '11:00:00'
     max_charge_level = float(input_number.max_car_charge)
